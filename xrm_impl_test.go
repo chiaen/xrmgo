@@ -23,27 +23,34 @@ func (t *testHandler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 	resp.Write(fixtures("request_security_token_response"))
 }
 
-type XrmgoTestSuite struct {
-	suite.Suite
-	ts *httptest.Server
+func mockServer(code int, body []byte) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(code)
+			w.Write(body)
+		}))
 }
 
-func (s *XrmgoTestSuite) SetupSuite() {
-	s.ts = httptest.NewServer(new(testHandler))
-	fmt.Println("hostname: ", s.ts.URL)
+type XrmgoTestSuite struct {
+	suite.Suite
+	c *clientImpl
 }
 
 func (s *XrmgoTestSuite) SetupTest() {
 	InitParams("hc340000.crm5.dynamics.com")
-}
 
-func (s *XrmgoTestSuite) TearDownSuite() {
-	s.ts.Close()
+	s.c = &clientImpl{
+		securityToken0: "token0",
+		securityToken1: "token1",
+		keyIdentifier:  "identifier",
+	}
 }
 
 func (s *XrmgoTestSuite) TestAuthSuccess() {
+	server := mockServer(200, fixtures("request_security_token_response"))
+	defer server.Close()
 	u := ocpLoginURL
-	ocpLoginURL = s.ts.URL
+	ocpLoginURL = server.URL
 	c := &clientImpl{}
 	result, err := c.Auth("testing", "password")
 	s.NoError(err)
@@ -59,6 +66,17 @@ func (s *XrmgoTestSuite) TestAuthFailed() {
 	result, err := c.Auth("test@test.onmicrosoft.com", "qwerty")
 	s.False(result)
 	s.EqualError(err, "Authentication Failure")
+}
+
+func (s *XrmgoTestSuite) TestCreateSuccess() {
+	server := mockServer(200, fixtures("create_response"))
+	defer server.Close()
+	u := endpoint
+	endpoint = server.URL
+	response, err := s.c.Create("accout", map[string]interface{}{"name": "HTC"})
+	s.NoError(err)
+	s.Equal("c4944f99-b5a0-e311-b64f-6c3be5a87df0", response)
+	endpoint = u
 }
 
 func TestXrmgoTestSuite(t *testing.T) {

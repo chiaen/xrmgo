@@ -2,6 +2,7 @@ package xrmgo
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -11,6 +12,7 @@ import (
 var (
 	ocpLoginURL = "https://login.microsoftonline.com/RST2.srf"
 
+	endpoint   string
 	hostName   string
 	regionName string
 )
@@ -25,6 +27,7 @@ func InitParams(hostname string) error {
 	}
 	hostName = hostname
 	regionName = r
+	endpoint = "https://" + hostname + "/XRMServices/2011/Organization.svc"
 	return nil
 }
 
@@ -74,8 +77,44 @@ func (c *clientImpl) User() (*User, error) {
 	return nil, errors.New("No impl")
 }
 
+func (c *clientImpl) isLoggedIn() bool {
+	return c.securityToken0 != "" && c.securityToken1 != "" && c.keyIdentifier != ""
+}
+
 func (c *clientImpl) Create(entity string, attrs map[string]interface{}) (string, error) {
-	return "", errors.New("No impl")
+
+	e := &Entity{
+		Attr:        Attributes(attrs),
+		logicalName: entity,
+	}
+
+	req, err := c.buildCreateRequest(e)
+	if err != nil {
+		return "", err
+	}
+	fmt.Println("req: ", req)
+	fmt.Println("end: ", endpoint)
+	resp, err := http.Post(endpoint, "application/soap+xml; charset=utf-8", strings.NewReader(req))
+	if err != nil {
+		return "", err
+	}
+	doc := etree.NewDocument()
+	_, err = doc.ReadFrom(resp.Body)
+	defer resp.Body.Close()
+	if err != nil {
+		return "", err
+	}
+	root := doc.Root()
+	faults := root.FindElements("//Fault")
+	if len(faults) > 0 {
+		reason := root.FindElement("//Reason//Text")
+		return "", errors.New(reason.Text())
+	}
+	response := root.FindElement("//CreateResponse//CreateResult")
+	if response == nil {
+		return "", errors.New("invalid response")
+	}
+	return response.Text(), nil
 }
 
 func (c *clientImpl) Retrieve(entity, guid string, criteria map[string]interface{}, columns ...string) ([]*Entity, error) {

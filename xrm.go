@@ -1,5 +1,9 @@
 package xrmgo
 
+import (
+	"github.com/beevik/etree"
+)
+
 type Authenticator interface {
 	Auth(username, password string) (bool, error)
 
@@ -28,7 +32,8 @@ type Client interface {
 	DescribeAttr(entity, field string) (*MetaData, error)
 }
 
-type Entity struct {
+type Xmler interface {
+	ToXML() *etree.Document
 }
 
 type User struct {
